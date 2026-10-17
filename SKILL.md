@@ -1,9 +1,6 @@
 ---
 name: pxl-pixel-art
-description: Create pixel art (game sprites, characters, items, tiles, tilesets, icons, scenes, sprite sheets) with pxl, a compact JavaScript DSL that renders PNGs and lets the user watch the painting live in a browser. Use when asked to draw, design or iterate on pixel art or game assets.
-metadata:
-  opencode/autoinvoke: false
-disable-model-invocation: true
+description: Create pixel art (game sprites, sprite animations, characters, items, tiles, tilesets, icons, scenes, sprite sheets) with pxl, a compact JavaScript DSL that renders PNGs and GIFs and lets the user watch the painting live in a browser. Use when asked to draw, design, animate or iterate on pixel art, retro/8-bit/16-bit game art or 2D game assets.
 ---
 
 # pxl: pixel art as code
