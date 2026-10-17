@@ -138,3 +138,17 @@ test("server: a folder loads each file on its own, flags duplicate names, notice
     s.close();
   }
 });
+
+test("server: a folder skips files that another file includes", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pxl-"));
+  writeFileSync(join(dir, "gem.px.js"), `use("pico8")\nsprite("gem", { w: 1, h: 1 }, px(0, 0, "8"))`);
+  writeFileSync(join(dir, "index.px.js"), `include("gem.px.js")\nsprite("box", { w: 2, h: 1 }, stamp("gem", 1, 0))`);
+  const s = await serve(dir, { port: 0, out: false, log: () => {} });
+  try {
+    const st = await (await fetch(s.url + "api/state")).json();
+    assert.deepEqual(st.assets.map((a: { name: string; file: string; dup?: boolean }) => [a.name, a.file, !!a.dup]),
+      [["gem", "index.px.js", false], ["box", "index.px.js", false]]);
+  } finally {
+    s.close();
+  }
+});

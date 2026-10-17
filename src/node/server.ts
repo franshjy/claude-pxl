@@ -104,17 +104,23 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
     const next: State = { version: state.version + 1, file: label, time: new Date().toLocaleTimeString(), ms: 0, assets: [], sheets: [], errors: [] };
     const files = artFiles();
     listed = files.join("\n");
+    const loads = files.map((f) => {
+      try { return { f, project: loadProject(f, { trace: true }) }; } catch (e) { return { f, err: wrap(e) }; }
+    });
+    // A file another file include()s is already shown through that file; loading it again would
+    // list its assets twice as duplicates.
+    const included = new Set(loads.flatMap((l) => l.project ? l.project.files.filter((x) => x !== l.f) : []));
     const projects: { file: string; project: Project }[] = [];
     const files2watch: string[] = [];
-    for (const f of files) {
-      try {
-        const project = loadProject(f, { trace: true });
+    for (const { f, project, err } of loads) {
+      if (included.has(f)) continue;
+      if (project) {
         projects.push({ file: basename(f), project });
         files2watch.push(...project.files);
-      } catch (e) {
+      } else {
         // a folder keeps showing its other files; a single file shows the error full-screen
-        if (isDir) next.errors.push(errInfo(wrap(e)));
-        else next.error = errInfo(wrap(e));
+        if (isDir) next.errors.push(errInfo(err!));
+        else next.error = errInfo(err!);
         files2watch.push(f);
       }
     }

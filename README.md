@@ -72,7 +72,8 @@ op by op, so you (or whoever is watching an agent work) can see the art being pa
 writes the same `out/` files as `build`.
 
 `pxl serve <folder>` serves every `*.px.js` in a folder, each loaded on its own (a broken file
-doesn't hide the others) and picks up files you add or remove. Turn on **gallery** to see every
+doesn't hide the others; a file another one `include`s is shown through that one) and picks up
+files you add or remove. Turn on **gallery** to see every
 sprite and animation at once, playing in sync and grouped by name prefix (`bracelet` next to
 `bracelet_shine`); the filter box takes globs like `bracelet*`. Names defined in two files are
 shown in red, since their outputs overwrite each other.
