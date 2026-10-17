@@ -1,6 +1,9 @@
 ---
 name: pxl-pixel-art
 description: Create pixel art (game sprites, characters, items, tiles, tilesets, icons, scenes, sprite sheets) with pxl, a compact JavaScript DSL that renders PNGs and lets the user watch the painting live in a browser. Use when asked to draw, design or iterate on pixel art or game assets.
+metadata:
+  opencode/autoinvoke: false
+disable-model-invocation: true
 ---
 
 # pxl: pixel art as code
@@ -13,15 +16,32 @@ parts, primitives, brushes and tilemaps. Needs Node ≥ 22.18. No install step.
 
 ## Workflow
 
-1. Write `art.px.js` (start from the template below; examples in `examples/`).
+1. Write `<subject>.px.js`, named after what it draws (`sword.px.js`), not `art.px.js` (start from
+   the template below; examples in `examples/`). `art.px.js` below stands for that file.
 2. Build only what you're working on: `PXL build art.px.js --only slime,heart`
 3. **Look at it**: read `out/_preview/<name>.png` (upscaled, checkerboard = transparent, grid every
    pixel, darker every 8). For exact pixel fixes use `PXL ascii art.px.js <name>` (keys + x/y rulers);
    it's cheaper than an image.
 4. Fix with small edits (a `grid(x, y, ...)` patch, one op) and rebuild. Repeat.
-5. If the user wants to watch: start `PXL serve art.px.js` in the background and give them the URL.
+5. **Check before you report**: you can't watch a GIF play, so verify instead:
+   - Game size: `PXL build art.px.js --only <name> --scale 3` (no grid below 6x), read the preview,
+     then rebuild without `--scale`.
+   - Size: the build line prints `WxH`; it must match what was asked (see outline below).
+   - Animation: the build line prints the frame count and loop length; `PXL ascii` prints each
+     frame with its ms. Compare frames to confirm only the intended pixels change.
+   Tell the user what you checked and that they should watch the GIF for timing.
+6. If the user wants to watch: start `PXL serve art.px.js` in the background and give them the URL.
    It rebuilds on every save and replays the edited asset's painting steps; it also writes the same
-   `out/` files, so keep reading previews as usual.
+   `out/` files, so keep reading previews as usual. One server watches one file (and its
+   `include`s) on one port (default 4321; pass `--port` if busy). Stop it when the user is done.
+
+## Files
+
+- Output always goes to `<file dir>/out/{sprites,anims,scenes,_preview}/<asset name>.*`. Files are
+  named by asset, not by source file, so asset names must be unique across every `.px.js` in a
+  folder, or one build silently overwrites another's output.
+- Keep a subject's variants, parts and animations in its own file. To view or sheet several files
+  together, make an index file that `include`s them (each keeps its own palette).
 
 Errors name the file:line:col, the asset/layer/op path, and suggest fixes ("did you mean 'r'?").
 One broken asset doesn't stop the others from building.
@@ -61,6 +81,9 @@ sheet("chars", ["slime*", "chest"], { pad: 1 })
   (`0-f`); `use("sweetie16" | "db16" | "endesga32" | "gray8")` for others.
 - **Items run in order**: grid strings (drawn at 0,0), ops, `(c) => { c.rect(...) }` functions,
   `layer(...)`s. Then mirror → swap → flip → rot → outline (grows 1px each side) → crop.
+- **Exact sizes**: because `outline` grows the canvas, a 32×32 outlined sprite is drawn at 30×30:
+  `sprite("gem", { w: 30, h: 30, outline: "k" }, ...)` → 32×32. Or draw an outlined `_part` and
+  stamp it into an `anim`/`sprite` with a fixed `{ w: 32, h: 32 }`.
 - **Shapes**: `px rect box line(…, width) hline vline circ ring ellipse poly fill wire text`.
 - **Tone**: `dither grad noise`, `shade/light(region, steps, density)`, `recolor`, and
   `shade:`/`light:` layers for cast shadows and glows. Regions: `[cx,cy,r]`, `[x,y,w,h]`,
