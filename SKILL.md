@@ -129,3 +129,23 @@ Dynamic lighting (lamps, light blocked by solid layers, sky light, Terraria-styl
   Use `shade: true` layers with a `poly` for cast shadows across many objects.
 - Use mnemonic keys (`g`/`G` light/dark green). Keep 2–4 shades per material for a clean pixel-art look.
 - Build with `--only` while iterating; a full build also writes every preview.
+
+## Art rules
+
+- **Silhouette first**: it must read when filled with one color, and at 1x. Cut detail that vanishes
+  at real size before adding more.
+- **One light source** (default top-left): `light` the lit side, `shade` the far side and the
+  bottom. Never darken every edge evenly (pillow shading).
+- **Outlines**: pick one style for a whole set (none, outer `outline`, or outline plus internal
+  lines) and keep it the same on every sprite.
+- **Frames**: fewer key poses beat many in-betweens. Typical counts: idle 4, walk 6 (4 is the
+  minimum), run 6, jump 3, attack 4, hurt 2, death 5.
+  - Walk: contact (front leg out, arms opposite, body lowest), passing (leg under body, body
+    highest), then the same two with the legs swapped. Write the 2nd half as `frame()` patches.
+  - Attack: anticipation (1–2 frames, ~120ms), a fast action (1–2 frames, ~50ms), a held contact
+    (~100ms), then a slower recovery (~80ms). Use `frame({ ms })` per phase.
+- **Timing** per frame: 50–80ms impacts, 80–120ms run, 120–180ms walk, 200–300ms idle, 300–500ms
+  ambient loops.
+- **Tiles**: build them with `tile`/`pattern` in a test scene and check the seams before shipping.
+- **In the engine** (when wiring sprites into a game): integer scaling only (2x, 3x, never 1.5x),
+  crisp rendering (no smoothing, e.g. Phaser `pixelArt: true`), PNG only.
