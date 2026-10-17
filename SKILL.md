@@ -32,8 +32,11 @@ parts, primitives, brushes and tilemaps. Needs Node ≥ 22.18. No install step.
    Tell the user what you checked and that they should watch the GIF for timing.
 6. If the user wants to watch: start `PXL serve art.px.js` in the background and give them the URL.
    It rebuilds on every save and replays the edited asset's painting steps; it also writes the same
-   `out/` files, so keep reading previews as usual. One server watches one file (and its
-   `include`s) on one port (default 4321; pass `--port` if busy). Stop it when the user is done.
+   `out/` files, so keep reading previews as usual. To show several files at once, serve the
+   folder (`PXL serve <dir>`): each `.px.js` loads on its own, and the **gallery** toggle plays every
+   sprite and anim together, grouped by name prefix (`bracelet`, `bracelet_shine`); the filter box
+   takes globs (`bracelet*`). One server per port (default 4321; pass `--port` if busy). Stop it
+   when the user is done.
 
 ## Files
 

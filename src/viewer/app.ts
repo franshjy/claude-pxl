@@ -1,7 +1,7 @@
 // pxl live viewer. Served type-stripped as /app.js; no imports, no build step.
 
 interface ErrInfo { message: string; loc?: string }
-interface AssetInfo { name: string; kind: string; part: boolean; w?: number; h?: number; hash?: string; steps?: number; changed: boolean; edited: boolean; error?: ErrInfo }
+interface AssetInfo { name: string; file: string; dup?: boolean; kind: string; part: boolean; w?: number; h?: number; hash?: string; steps?: number; changed: boolean; edited: boolean; error?: ErrInfo }
 interface State { version: number; file: string; time: string; ms: number; error?: ErrInfo; assets: AssetInfo[]; sheets: string[]; errors: ErrInfo[] }
 interface FrameJ { label: string; loc?: string; w: number; h: number; full?: string; changes?: string }
 interface AssetJ { name: string; kind: string; w: number; h: number; loc?: string; palette: Record<string, string>; layers: string[]; image: string; frames: FrameJ[]; anim?: { ms: number; image: string }[] }
@@ -120,7 +120,7 @@ function renderList(): void {
     ["parts", state.assets.filter((a) => a.part)],
   ];
   for (const [title, list] of groups) {
-    const shown = list.filter((a) => !q || a.name.toLowerCase().includes(q));
+    const shown = list.filter((a) => matches(a.name, q));
     if (!shown.length) continue;
     const h = document.createElement("div");
     h.className = "sect";
@@ -129,6 +129,7 @@ function renderList(): void {
     for (const a of shown) {
       const row = document.createElement("div");
       row.className = "row" + (a.name === sel ? " sel" : "");
+      row.title = a.file;
       const cv = document.createElement("canvas");
       cv.width = 32; cv.height = 32;
       cv.dataset.name = a.name;
@@ -167,6 +168,104 @@ async function paintThumb(cv: HTMLCanvasElement, a: AssetInfo): Promise<void> {
   const w = pic.w * s, h = pic.h * s;
   c.clearRect(0, 0, 32, 32);
   c.drawImage(off, (32 - w) / 2, (32 - h) / 2, w, h);
+}
+
+// ---------------------------------------------------------------- gallery
+// Every sprite and anim at one shared zoom, grouped by name prefix (bracelet, bracelet_shine), all
+// looping on one clock so related animations stay in sync.
+
+/** Filter text: a glob when it has * or ? (`bracelet*`), else a substring. Ignores a `file:` prefix. */
+function matches(id: string, q: string): boolean {
+  if (!q) return true;
+  const names = [id, id.slice(id.lastIndexOf(":") + 1)];
+  if (!/[*?]/.test(q)) return names.some((n) => n.toLowerCase().includes(q));
+  const re = new RegExp("^" + q.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i");
+  return names.some((n) => re.test(n));
+}
+
+const groupKey = (id: string) => id.slice(id.lastIndexOf(":") + 1).replace(/^_+/, "").split("_")[0];
+
+interface GalPic { hash: string; frames: { ms: number; pic: Pic }[] }
+interface Card { cv: HTMLCanvasElement; name: string; at?: number; pic?: GalPic }
+const galPics = new Map<string, GalPic>();
+let galCards: Card[] = [];
+let galGen = 0;
+const galT0 = performance.now();
+const galleryOn = () => $<HTMLInputElement>("galtog").checked;
+
+async function renderGallery(): Promise<void> {
+  const gen = ++galGen;
+  const box = $("gallery");
+  document.body.classList.toggle("gal", galleryOn());
+  if (!galleryOn() || !state) { box.innerHTML = ""; galCards = []; draw(); return; }
+  const q = ($<HTMLInputElement>("filter")).value.trim().toLowerCase();
+  const shown = state.assets.filter((a) => !a.part && !a.error && a.hash && matches(a.name, q));
+  await Promise.all(shown.filter((a) => galPics.get(a.name)?.hash !== a.hash).map(async (a) => {
+    const j = await fetchAsset(a.name, false);
+    if (!j) return;
+    const frames = j.anim?.length
+      ? j.anim.map((f) => ({ ms: f.ms, pic: { w: j.w, h: j.h, data: u32(f.image) } }))
+      : [{ ms: 0, pic: { w: j.w, h: j.h, data: u32(j.image) } }];
+    galPics.set(a.name, { hash: a.hash!, frames });
+  }));
+  if (gen !== galGen) return; // a newer build or filter change already redrew
+  const groups = new Map<string, AssetInfo[]>();
+  for (const a of shown) groups.set(groupKey(a.name), [...(groups.get(groupKey(a.name)) ?? []), a]);
+  const maxDim = Math.max(1, ...shown.map((a) => Math.max(a.w ?? 1, a.h ?? 1)));
+  const z = Math.max(1, Math.min(8, Math.floor(192 / maxDim)));
+  box.innerHTML = "";
+  galCards = [];
+  if (!shown.length) box.textContent = state.assets.length ? "no assets match the filter" : "no assets yet";
+  for (const [key, list] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+    const h = document.createElement("div");
+    h.className = "sect";
+    h.textContent = `${key} · ${list.length}`;
+    const row = document.createElement("div");
+    row.className = "cards";
+    for (const a of list) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.title = `${a.file} · ${a.kind} ${a.w}×${a.h}` + (a.dup ? "\nanother file defines this name too: their outputs overwrite each other" : "");
+      const cv = document.createElement("canvas");
+      cv.width = a.w!; cv.height = a.h!;
+      cv.style.width = a.w! * z + "px"; cv.style.height = a.h! * z + "px";
+      const nm = document.createElement("div");
+      nm.className = "nm" + (a.dup ? " dup" : "");
+      nm.textContent = a.name;
+      card.append(cv, nm);
+      card.onclick = () => { $<HTMLInputElement>("galtog").checked = false; saveGallery(); renderGallery(); select(a.name); };
+      row.append(card);
+      galCards.push({ cv, name: a.name });
+    }
+    box.append(h, row);
+  }
+  paintGallery();
+}
+
+function paintGallery(): void {
+  const t = performance.now() - galT0, anim = $<HTMLInputElement>("animtog").checked;
+  for (const c of galCards) {
+    const p = galPics.get(c.name);
+    if (!p) continue;
+    let i = 0;
+    const total = p.frames.reduce((s, f) => s + f.ms, 0);
+    if (anim && p.frames.length > 1 && total > 0) {
+      let r = t % total;
+      while (r >= p.frames[i].ms) r -= p.frames[i++].ms;
+    }
+    if (c.at === i && c.pic === p) continue;
+    c.at = i; c.pic = p;
+    c.cv.getContext("2d")!.putImageData(toImageData(p.frames[i].pic), 0, 0);
+  }
+}
+
+function galTick(): void {
+  if (galleryOn()) paintGallery();
+  window.setTimeout(galTick, 20); // a timer, like animTick: rAF stalls in throttled panes
+}
+
+function saveGallery(): void {
+  try { localStorage.setItem("pxl.gal", galleryOn() ? "1" : "0"); } catch { /* storage blocked */ }
 }
 
 // ---------------------------------------------------------------- steps panel
@@ -364,6 +463,7 @@ function onBuild(s: State): void {
   st.className = "pill " + (bad ? "bad" : "ok");
   $("buildinfo").textContent = `v${s.version} · ${s.ms}ms · ${s.time}`;
   renderList();
+  if (galleryOn()) renderGallery();
 
   const follow = ($<HTMLInputElement>("follow")).checked;
   const changed = s.assets.filter((a) => a.changed);
@@ -394,7 +494,8 @@ $("first").onclick = () => { play(false); setStep(0); };
 $("last").onclick = () => { play(false); setStep(Infinity); };
 $("prev").onclick = () => { play(false); setStep(step - 1); };
 $("next").onclick = () => { play(false); setStep(step + 1); };
-$("filter").oninput = renderList;
+$("filter").oninput = () => { renderList(); renderGallery(); };
+$("galtog").onchange = () => { saveGallery(); renderGallery(); };
 for (const id of ["gridtog", "hl", "animtog"]) $(id).onchange = draw;
 
 const stage = $("stage");
@@ -438,4 +539,7 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+try { $<HTMLInputElement>("galtog").checked = localStorage.getItem("pxl.gal") === "1"; } catch { /* storage blocked */ }
+document.body.classList.toggle("gal", galleryOn());
+galTick();
 connect();

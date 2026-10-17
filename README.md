@@ -71,11 +71,17 @@ out/_preview/*.png                                    upscaled previews with a p
 op by op, so you (or whoever is watching an agent work) can see the art being painted. It also
 writes the same `out/` files as `build`.
 
+`pxl serve <folder>` serves every `*.px.js` in a folder, each loaded on its own (a broken file
+doesn't hide the others) and picks up files you add or remove. Turn on **gallery** to see every
+sprite and animation at once, playing in sync and grouped by name prefix (`bracelet` next to
+`bracelet_shine`); the filter box takes globs like `bracelet*`. Names defined in two files are
+shown in red, since their outputs overwrite each other.
+
 ## Commands
 
 ```
 pxl build <art.px.js> [--out DIR] [--only a,b] [--scale N] [--no-preview]
-pxl serve <art.px.js> [--port 4321] [--out DIR | --no-out] [--no-preview]
+pxl serve <art.px.js | folder> [--port 4321] [--out DIR | --no-out] [--no-preview]
 pxl ascii <art.px.js> <name>     print an asset as palette keys with x/y rulers
 pxl list  <art.px.js>            list assets, groups and sheets with source locations
 ```

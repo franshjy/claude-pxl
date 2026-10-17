@@ -110,3 +110,31 @@ test("server: state, asset frames, rebuild on change", async () => {
     s.close();
   }
 });
+
+test("server: a folder loads each file on its own, flags duplicate names, notices new files", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pxl-"));
+  writeFileSync(join(dir, "a.px.js"), `use("pico8")\nsprite("a", { w: 1, h: 1 }, px(0, 0, "8"))\nsprite("gem", { w: 1, h: 1 }, px(0, 0, "7"))`);
+  writeFileSync(join(dir, "b.px.js"), `use("pico8")\nsprite("gem", { w: 2, h: 1 }, px(0, 0, "9"))`);
+  writeFileSync(join(dir, "broken.px.js"), `sprite(`);
+  const s = await serve(dir, { port: 0, out: false, log: () => {} });
+  try {
+    const st = await (await fetch(s.url + "api/state")).json();
+    assert.equal(st.error, undefined, "a broken file must not hide the others");
+    assert.equal(st.errors.length, 1);
+    assert.deepEqual(st.assets.map((a: { name: string; file: string; dup?: boolean }) => [a.name, a.file, !!a.dup]),
+      [["a", "a.px.js", false], ["a.px.js:gem", "a.px.js", true], ["b.px.js:gem", "b.px.js", true]]);
+    const gem = await (await fetch(s.url + "api/asset?name=" + encodeURIComponent("b.px.js:gem"))).json();
+    assert.equal(gem.w, 2);
+
+    writeFileSync(join(dir, "c.px.js"), `use("pico8")\nanim("c", { w: 1, h: 1 }, frame(px(0, 0, "8")), frame(px(0, 0, "9")))`);
+    const t0 = Date.now();
+    let names: string[] = [];
+    while (Date.now() - t0 < 5000 && !names.includes("c")) {
+      await new Promise((r) => setTimeout(r, 100));
+      names = (await (await fetch(s.url + "api/state")).json()).assets.map((a: { name: string }) => a.name);
+    }
+    assert.ok(names.includes("c"), "new file was not picked up");
+  } finally {
+    s.close();
+  }
+});

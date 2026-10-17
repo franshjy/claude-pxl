@@ -200,7 +200,7 @@ painting replay ends ("animate" toggle).
 
 ```
 node <pxl>/bin/pxl.js build <file> [--out DIR] [--only a,b] [--scale N] [--no-preview]
-node <pxl>/bin/pxl.js serve <file> [--port 4321] [--out DIR | --no-out] [--no-preview]
+node <pxl>/bin/pxl.js serve <file | folder> [--port 4321] [--out DIR | --no-out] [--no-preview]
 node <pxl>/bin/pxl.js ascii <file> <name>
 node <pxl>/bin/pxl.js list  <file>
 ```
@@ -211,7 +211,10 @@ Outputs go to `<file dir>/out`: `sprites/<n>.png`, `scenes/<n>.png`, `<sheet>.pn
 
 `serve` opens a live viewer that rebuilds on save, follows the asset you edited and replays its
 painting steps (each top-level op, layer and post-processing step, with its file:line). It also
-writes the same outputs as `build`.
+writes the same outputs as `build`. Given a folder, it loads every `*.px.js` in it as a separate
+project (a name defined in two files gets the id `file:name` and is flagged); the **gallery**
+toggle shows all sprites and anims playing together, grouped by name prefix, and the filter takes
+globs (`bracelet*`, `tree_?`).
 
 ## Library
 

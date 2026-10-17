@@ -60,6 +60,15 @@
   #inspect .sw { width: 26px; height: 26px; border-radius: 5px; border: 1px solid var(--line); flex: none; }
   #pal { display: flex; flex-wrap: wrap; gap: 3px; padding: 0 12px 12px; }
   #pal span { width: 22px; height: 22px; border-radius: 4px; font: 10px var(--mono); display: grid; place-items: center; text-shadow: 0 0 3px #000, 0 0 2px #000; color: #fff; }
+  #gallery { display: none; flex: 1; overflow: auto; padding: 4px 18px 18px; background: #0e0d13; }
+  body.gal #gallery { display: block; }
+  body.gal #stage, body.gal #timeline, body.gal #stepinfo { display: none; }
+  .cards { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+  .card { padding: 8px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); cursor: pointer; }
+  .card:hover { border-color: var(--accent); }
+  .card canvas { display: block; image-rendering: pixelated; background: repeating-conic-gradient(#2a2735 0 25%, #33303f 0 50%) 0 0 / 16px 16px; }
+  .card .nm { margin-top: 6px; font: 11px var(--mono); color: var(--dim); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .nm.dup { color: var(--bad); }
   kbd { font: 10px var(--mono); background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
   .keys { padding: 8px 12px 12px; color: var(--dim); font-size: 11px; line-height: 1.9; }
 </style>
@@ -71,16 +80,18 @@
   <span class="pill" id="status">connecting</span>
   <span class="pill" id="buildinfo"></span>
   <span class="grow"></span>
+  <label class="tog"><input type="checkbox" id="galtog"> gallery</label>
   <label class="tog"><input type="checkbox" id="follow" checked> follow edits</label>
   <label class="tog"><input type="checkbox" id="gridtog" checked> grid</label>
   <label class="tog"><input type="checkbox" id="hl" checked> highlight step</label>
   <label class="tog"><input type="checkbox" id="animtog" checked> animate</label>
 </header>
 <section id="list">
-  <input id="filter" placeholder="filter assets…" spellcheck="false">
+  <input id="filter" placeholder="filter: name or glob (tree_*)" spellcheck="false">
   <div id="assets"></div>
 </section>
 <main>
+  <div id="gallery"></div>
   <div id="stage"><canvas id="view"></canvas><div id="hud"></div><div id="err"></div></div>
   <div id="timeline">
     <button id="first" title="first step (Home)">⏮</button>

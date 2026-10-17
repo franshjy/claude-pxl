@@ -1,5 +1,7 @@
 // Live viewer server: watch art files, rebuild with traces, push updates over SSE.
-import { readFileSync, unwatchFile, watchFile } from "node:fs";
+// Serves one art file, or a folder: every *.px.js in it loads as its own project, so a broken file
+// or a name defined in two files only affects that file.
+import { readdirSync, readFileSync, statSync, unwatchFile, watchFile } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { stripTypeScriptTypes } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
@@ -20,7 +22,12 @@ export interface ServeOptions {
 }
 
 interface AssetInfo {
+  /** Unique id: the asset name, or `file:name` when several files in a folder define that name. */
   name: string;
+  /** Art file (basename) that defines it. */
+  file: string;
+  /** Another file in the folder defines the same name (their outputs overwrite each other). */
+  dup?: boolean;
   kind: string;
   part: boolean;
   w?: number;
@@ -69,11 +76,19 @@ function b64(a: Uint32Array): string {
 
 export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: string; close: () => void }> {
   const abs = resolve(file);
-  const out = opts.out === false ? undefined : opts.out ?? join(dirname(abs), "out");
+  const isDir = statSync(abs).isDirectory();
+  const root = isDir ? abs : dirname(abs);
+  const label = isDir ? basename(abs) + "/" : basename(abs);
+  const out = opts.out === false ? undefined : opts.out ?? join(root, "out");
   const log = opts.log ?? ((l: string) => console.log(l));
   const clients = new Set<ServerResponse>();
-  let project: Project | undefined;
-  let state: State = { version: 0, file: basename(abs), time: "", ms: 0, assets: [], sheets: [], errors: [] };
+  const artFiles = () => isDir
+    ? readdirSync(abs).filter((f) => /\.px\.[cm]?[jt]s$/.test(f)).sort().map((f) => join(abs, f))
+    : [abs];
+  /** Asset id -> the project that defines it and its name there. */
+  let index = new Map<string, { project: Project; name: string }>();
+  let listed = "";
+  let state: State = { version: 0, file: label, time: "", ms: 0, assets: [], sheets: [], errors: [] };
   const hashes = new Map<string, string>();
   const fps = new Map<string, string>();
   let watched = new Set<string>();
@@ -86,19 +101,36 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
 
   const rebuild = () => {
     const t0 = performance.now();
-    const next: State = { version: state.version + 1, file: basename(abs), time: new Date().toLocaleTimeString(), ms: 0, assets: [], sheets: [], errors: [] };
-    try {
-      project = loadProject(abs, { trace: true });
-    } catch (e) {
-      project = undefined;
-      next.error = errInfo(wrap(e));
+    const next: State = { version: state.version + 1, file: label, time: new Date().toLocaleTimeString(), ms: 0, assets: [], sheets: [], errors: [] };
+    const files = artFiles();
+    listed = files.join("\n");
+    const projects: { file: string; project: Project }[] = [];
+    const files2watch: string[] = [];
+    for (const f of files) {
+      try {
+        const project = loadProject(f, { trace: true });
+        projects.push({ file: basename(f), project });
+        files2watch.push(...project.files);
+      } catch (e) {
+        // a folder keeps showing its other files; a single file shows the error full-screen
+        if (isDir) next.errors.push(errInfo(wrap(e)));
+        else next.error = errInfo(wrap(e));
+        files2watch.push(f);
+      }
     }
-    if (project) {
+    const count = new Map<string, number>();
+    for (const { project } of projects) for (const n of project.order) count.set(n, (count.get(n) ?? 0) + 1);
+    index = new Map();
+    for (const { file: fname, project } of projects) {
       for (const name of project.order) {
         const def = project.assets.get(name)!;
+        const dup = count.get(name)! > 1;
+        const id = dup ? `${fname}:${name}` : name;
+        index.set(id, { project, name });
         const fp = fingerprint(def);
-        const info: AssetInfo = { name, kind: def.kind, part: name.startsWith("_"), changed: false, edited: fps.size > 0 && fps.get(name) !== fp };
-        fps.set(name, fp);
+        const info: AssetInfo = { name: id, file: fname, kind: def.kind, part: name.startsWith("_"), changed: false, edited: fps.size > 0 && fps.get(id) !== fp };
+        if (dup) info.dup = true;
+        fps.set(id, fp);
         try {
           const b = project.build(name);
           info.w = b.img.w;
@@ -106,23 +138,23 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
           // Animated assets: every frame counts, so an edit to frame 3 still refreshes the viewer.
           info.hash = b.anim ? project.frames(name).map((f) => f.img.hash() + f.ms).join("|") : b.img.hash();
           info.steps = b.trace?.frames.length ?? 0;
-          info.changed = hashes.get(name) !== info.hash;
-          hashes.set(name, info.hash);
+          info.changed = hashes.get(id) !== info.hash;
+          hashes.set(id, info.hash);
         } catch (e) {
           info.error = errInfo(wrap(e));
           info.changed = true;
-          hashes.delete(name);
+          hashes.delete(id);
         }
         next.assets.push(info);
       }
-      next.sheets = project.sheets.map((s) => s.name);
+      next.sheets.push(...project.sheets.map((s) => s.name));
       if (out) {
         const r = writeOutputs(project, out, { preview: opts.preview });
         // asset failures are already listed per asset; keep the rest (sheets, unknown names)
-        next.errors = r.errors.filter((e) => !next.assets.some((a) => a.error?.message === e.message)).map(errInfo);
+        next.errors.push(...r.errors.filter((e) => !next.assets.some((a) => a.error?.message === e.message)).map(errInfo));
       }
-      watch(project.files);
-    } else watch([abs]);
+    }
+    watch(files2watch);
     next.ms = Math.round(performance.now() - t0);
     state = next;
     const bad = next.error ? 1 : next.assets.filter((a) => a.error).length + next.errors.length;
@@ -146,14 +178,18 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
     watched = nextSet;
   }
 
-  const assetPayload = (name: string, withFrames: boolean) => {
-    if (!project) return undefined;
-    const def = project.assets.get(name);
-    if (!def) return undefined;
+  // Folders: notice art files being added or removed (file edits are caught by watch()).
+  const poll = isDir ? setInterval(() => { if (artFiles().join("\n") !== listed) schedule(); }, 500) : undefined;
+
+  const assetPayload = (id: string, withFrames: boolean) => {
+    const hit = index.get(id);
+    if (!hit) return undefined;
+    const { project, name } = hit;
+    const def = project.assets.get(name)!;
     let b: BuildOut;
     try { b = project.build(name); } catch { return undefined; }
     return {
-      name, kind: def.kind, w: b.img.w, h: b.img.h, loc: def.loc,
+      name: id, kind: def.kind, w: b.img.w, h: b.img.h, loc: def.loc,
       palette: def.pal.table(),
       layers: b.layers.map((l) => l.name),
       image: b64(b.img.data),
@@ -211,6 +247,7 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
         url,
         close: () => {
           clearInterval(ping);
+          clearInterval(poll);
           clearTimeout(timer);
           for (const f of watched) unwatchFile(f);
           for (const c of clients) c.end();

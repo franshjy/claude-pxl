@@ -11,8 +11,9 @@ const USAGE = `pxl — pixel-art DSL
   pxl build <art.px.js> [--out DIR] [--only a,b] [--scale N] [--no-preview]
       Build PNGs (out/sprites, out/scenes, out/anims strips + JSON + GIF, sheets + JSON) and
       previews (out/_preview; animated assets also get a .gif).
-  pxl serve <art.px.js> [--port 4321] [--out DIR | --no-out] [--no-preview]
-      Live viewer: rebuilds on save and replays each asset's painting steps.
+  pxl serve <art.px.js | folder> [--port 4321] [--out DIR | --no-out] [--no-preview]
+      Live viewer: rebuilds on save and replays each asset's painting steps. A folder serves
+      every *.px.js in it, each loaded on its own; the gallery shows them all playing at once.
   pxl ascii <art.px.js> <name>
       Print an asset as palette keys with x/y rulers (anims: every frame).
   pxl list  <art.px.js>
@@ -95,7 +96,7 @@ export async function main(argv: string[]): Promise<number> {
         return 0;
       }
       case "serve": {
-        const s = await serve(file, { port: a.port, out: a.out === false ? false : outDir, preview: a.preview });
+        const s = await serve(file, { port: a.port, out: a.out === false ? false : a.out ? outDir : undefined, preview: a.preview });
         console.log(`pxl live viewer: ${s.url}  (watching ${file}; Ctrl+C to stop)`);
         return await new Promise<number>(() => {});
       }
